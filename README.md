@@ -6,14 +6,14 @@
 
 Add
 ```
-git remote add origin https://git.acelab.ai/sangmin/rsti.git
-git clone -b rsti https://git.acelab.ai/sangmin/rsti.git
+git remote add origin https://github.com/INNO-GH/PS_Server-to-provide-RealTime-Surrounding-Transport-Information.git
+git clone -b master https://github.com/INNO-GH/PS_Server-to-provide-RealTime-Surrounding-Transport-Information.git
 ```
 
 Update
 ```
-cd rsti
-git pull origin rsti
+cd master
+git pull origin master
 ```
 
 ## Run Server and Client
