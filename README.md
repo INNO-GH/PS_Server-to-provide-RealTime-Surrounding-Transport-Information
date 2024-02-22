@@ -12,7 +12,7 @@ git clone -b master https://github.com/INNO-GH/PS_Server-to-provide-RealTime-Sur
 
 Update
 ```
-cd master
+cd PS_Server-to-provide-RealTime-Surrounding-Transport-Information
 git pull origin master
 ```
 
