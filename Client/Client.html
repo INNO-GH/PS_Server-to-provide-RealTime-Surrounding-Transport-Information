@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>simpleMap</title>
+<script
+	src="https://apis.openapi.sk.com/tmap/jsv2?version=1&appKey=ZEtJeMLYTG9bOE8vD6m7g7MlPY18Hy9B1AmAqqcp"></script>
+<style>
+	#time_display, #console_display {font-size: 13px;}</style>
+<script type="text/javascript">	
+
+	// 기초변수 설정
+	var map;
+	var latlon;
+	var marker;
+	var latlon_array = [];
+	var marker_array = [];
+	var line_array = [];
+
+	// 기본적으로 지도를 생성
+	function initTmap(){
+
+		// 페이지에서의 지도의 크기 및 초기좌표 및 현재시계 등록
+		map = new Tmapv2.Map("map_div", {
+			center : new Tmapv2.LatLng(37.502815, 127.043182), // 지도 초기 좌표
+			width : "100%", // 지도의 넓이
+			height : "800px", // 지도의 높이
+			zoom : 17
+		});
+		updateTime(); // 지도의 시계
+
+		// 지도 클릭 이벤트 등록
+		map.addListener("click", onClick);
+
+	}     
+
+	//////////////////////////////
+	//////////////////////////////
+	
+	// 클라이언트 메인실행 함수 
+	var check = 0;
+
+	function onClick(e){
+
+		// 첫번째클릭은 클라이언트 위치 생성
+		if(check == 0){
+			
+			remover(); // 좌표 마커 라인 초기화
+			latlon = e.latLng; // 첫번째클릭 생성
+			latlon_array.push(latlon); // 첫번째클릭 저장
+			check = 1;
+
+		}
+
+		// 두번째클릭은 클라이언트 방향 생성
+		else{
+		
+			latlon = e.latLng; // 두번째클릭 생성
+			latlon_array.push(latlon); // 두번째마커 저장
+			check = 0;
+
+		// 두머커를 잇는 선 그리기
+			var polyline = new Tmapv2.Polyline({
+			 	path: [new Tmapv2.LatLng(latlon_array[0].lat(),latlon_array[0].lng()),	
+					new Tmapv2.LatLng(latlon_array[1].lat(),latlon_array[1].lng())],	
+				strokeColor: "#dd00dd",	// 라인 색상
+				strokeWeight: 6, // 라인 두께
+				direction: 1,
+				directionColor: 'yellow',
+				map: map
+			});
+			line_array.push(polyline);
+
+		// 두마커의 좌표로 경도, 위도, 각도, 시간 도출
+			var longitude, latitude, angle, time;
+			longitude = latlon_array[0].lng(); // 경도
+			longitude = Math.round(parseFloat(longitude.toFixed(6)) * 1e6);
+			latitude = latlon_array[0].lat(); // 위도
+			latitude = Math.round(parseFloat(latitude.toFixed(6)) * 1e6);
+			var dif_lon = latlon_array[1].lng() - latlon_array[0].lng(); // 각도
+			var dif_lat = latlon_array[1].lat() - latlon_array[0].lat();
+			if( (dif_lon>=0) && (dif_lat>=0) ) angle = arctan(dif_lon, dif_lat);
+			else if( (dif_lon<0) && (dif_lat>=0) ) angle = 180 - arctan(dif_lon, dif_lat); 
+			else if( (dif_lon<0) && (dif_lat<0) ) angle = 180 + arctan(dif_lon, dif_lat);
+			else if( (dif_lon>=0) && (dif_lat<0) ) angle = 360 - arctan(dif_lon, dif_lat);
+			if( (dif_lon==0) && (dif_lat>=0) ) angle = 90;
+			else if( (dif_lon==0) && (dif_lat<0) ) angle = 270;
+			var date = new Date(); // 시간
+    		var options = { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' };
+    		time = date.toLocaleTimeString('en-US', options);
+
+		//////////////////////////////	
+		
+		// 서버와 주고받기
+			sendSequentialRequests(longitude, latitude, angle, time);
+
+		}
+
+	}
+
+	async function sendSequentialRequests(longitude, latitude, angle, time) { // 동기화함수
+		
+		var info = "초기";
+		while(info != "엔드"){
+			const url = "http://192.168.10.24:8080" // 기본변수
+			var message_build = "정보 : "+info+"\n";
+			message_build += "경도 : "+longitude.toString()+"\n";
+			message_build += "위도 : "+latitude.toString()+"\n";
+			message_build += "각도 : "+angle.toString()+"\n";
+			message_build += "시간 : "+time+"\n";
+			const message = message_build;
+
+			try {
+            	const response = await fetch(url, { // 메세지 만들고 보내기
+                	method: "POST",
+                	headers: {
+                    	'Content-Type': 'text/plain'
+                	},
+                	body: message
+            	});
+
+				if (!response.ok) { // 응답 메세지 받기
+                	throw new Error(`POST 요청 실패 : ${response.status}`);
+            	}
+				const data = await response.text();
+
+		//////////////////////////////
+
+		// 정보의 특성 파악			
+				console.log(data);
+				const data_array = data.split(/\n\n/);
+				info = getWordAfter(data_array[0], "Info : ");
+				var entertime = getWordAfter(data_array[0], "EnterTime : ");
+				var origin = getWordAfter(data_array[0], "Origin : ");
+				var recordtime = getWordAfter(data_array[0], "RecordTime : ");
+				var color = getWordAfter(data_array[0], "Color : ");
+				var nextinfo = getWordAfter(data_array[0]+"\n", "NextInfo : ");
+				if(recordtime != "") displayTime(info, entertime, origin, recordtime);
+
+		// 정보 표시하기
+				for(var i = 1; i < data_array.length; ++i){
+					var lon_match = data_array[i].match(/경도 : ([0-9.]+)/);
+					var lat_match = data_array[i].match(/위도 : ([0-9.]+)/);
+					if( (lon_match != null) && (lat_match != null) ){
+						lon_match[1] = parseFloat(lon_match[1]);
+						lat_match[1] = parseFloat(lat_match[1]);
+						marker = new Tmapv2.Marker({
+							position: new Tmapv2.LatLng(lat_match[1],lon_match[1]),
+							map: map,
+							title: data_array[i],
+							label: "<span style='background-color: "+color+";color:white'>"+info+"</span>"
+						});
+						marker_array.push(marker); 
+					}		
+				}
+				info = nextinfo;
+			}
+
+			catch (error) {
+            	console.log("ERROR", error);
+				break;
+			}
+		}
+
+	}
+	
+	//////////////////////////////
+	//////////////////////////////
+
+	// 현재시계를 업데이트하는 함수
+	function updateTime() {
+    	var currentDate = new Date();
+    	var options = { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' };
+    	var currentTime = currentDate.toLocaleTimeString('en-US', options);
+    	document.getElementById("time_display").innerText = "현재 - " + currentTime;
+    	setTimeout(updateTime, 1000);
+	}
+
+	// 좌표와 마커와 라인을 초기화하는 함수
+	function remover() {
+		latlon_array = [];
+		for (var i = 0; i < marker_array.length; i++) {
+			marker_array[i].setMap(null);
+		}
+		for (var i = 0; i < line_array.length; i++) {
+			line_array[i].setMap(null);
+		}
+		marker_array = [];
+		line_array = [];
+	}
+
+	// 절대값 아크탄젠트 값을 계산하는 함수
+	function arctan(x, y) {
+		return Math.round( Math.atan(Math.abs(y)/Math.abs(x)) * (180/Math.PI) );
+	}
+
+	// 특정단어와 공백 사이의 문자열 파싱 함수
+	function getWordAfter(inputstring, frontword) {
+		const startIndex = inputstring.indexOf(frontword, 0) + frontword.length;
+		const linenIndex = inputstring.indexOf("\n", startIndex);
+		return inputstring.substring(startIndex, linenIndex);		
+	}
+
+	// 데이터 시각을 출력하는 함수
+	function displayTime(info, entertime, origin, recordtime) {
+		var consoleBox = document.getElementById("console_display");
+		var currentDate = new Date();
+    	var options = { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' };
+    	var currentTime = currentDate.toLocaleTimeString('en-US', options);
+		consoleBox.innerText += "입력 - "+entertime+"\n";
+		consoleBox.innerText += info+"("+origin+") - "+recordtime+"\n";
+		consoleBox.innerText += "출력 - "+currentTime+"\n\n";
+		consoleBox.scrollTop = consoleBox.scrollHeight;
+	}
+
+</script>
+</head>
+<body onload="initTmap()">
+	<div id="map_div"></div>
+	<div id="time_display" style="position: absolute; top: 18px; left: 20px; background-color: white; padding: 5px;"></div>
+	<div id="console_display" style="position: absolute; top: 55px; left: 20px; background-color: white; padding: 5px; width: 240px; height: 150px; overflow-y: scroll;"></div>
+</body>
+</body>
+</html>
